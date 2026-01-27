@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LavenderTunes - Colección de Discos de Vinilo</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-section">
+                <div>
+                    <h1>LavenderTunes</h1>
+                    <p class="subtitle">Colección de Discos de Vinilo</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="filters">
+            <div class="filter-group">
+                <input type="text" id="searchInput" placeholder="Buscar por nombre, artista o álbum...">
+                <select id="genreFilter">
+                    <option value="">Todos los géneros</option>
+                </select>
+                <select id="sortBy">
+                    <option value="nombre">Ordenar por nombre</option>
+                    <option value="artista">Ordenar por artista</option>
+                    <option value="precio_asc">Precio: menor a mayor</option>
+                    <option value="precio_desc">Precio: mayor a menor</option>
+                    <option value="anio_desc">Año: más reciente</option>
+                    <option value="anio_asc">Año: más antiguo</option>
+                </select>
+                
+                <div class="spotify-section" style="display:flex; align-items:center;">
+                    <button id="openSpotifyBtn" class="primary-btn">Agregar desde Spotify</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="spotifyPanel" class="spotify-panel" style="display:none; margin:16px 40px 0 40px;">
+            <div class="spotify-search-row">
+                <input type="text" id="spotifySearchInput" placeholder="Buscar álbum en Spotify...">
+                <button id="spotifySearchBtn">Buscar</button>
+            </div>
+
+            <div id="spotifyResults" class="spotify-results"></div>
+
+            <div id="priceRow" style="display:none; margin-top:12px;">
+                <label for="selectedAlbumPrice">Precio del disco:</label>
+                <input type="number" id="selectedAlbumPrice" step="0.01" min="0" placeholder="0.00">
+                <button id="saveAlbumBtn">Guardar selección</button>
+                <button id="cancelAlbumBtn">Cancelar</button>
+            </div>
+            <div id="spotifySelections" class="spotify-selections" style="margin-top:12px;"></div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalRecords">0</div>
+                <div class="stat-label">Discos en catálogo</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalGenres">0</div>
+                <div class="stat-label">Géneros musicales</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalStock">0</div>
+                <div class="stat-label">Unidades disponibles</div>
+            </div>
+        </div>
+
+        <div id="recordsContainer">
+            <div class="loading">Cargando catálogo...</div>
+        </div>
+    </div>
+
+    <script>
+        let allRecords = [];
+        let filteredRecords = [];
+
+        // Cargar datos al iniciar
+        async function loadRecords() {
+            try {
+                const response = await fetch('/api/discos');
+                if (!response.ok) throw new Error('Error al cargar los discos');
+                
+                allRecords = await response.json();
+                filteredRecords = [...allRecords];
+                
+                updateStats();
+                populateGenreFilter();
+                displayRecords();
+            } catch (error) {
+                document.getElementById('recordsContainer').innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Actualizar estadísticas
+        function updateStats() {
+            const totalRecords = allRecords.length;
+            const genres = [...new Set(allRecords.map(r => r.genero))];
+            const totalStock = allRecords.reduce((sum, r) => sum + r.stock, 0);
+
+            document.getElementById('totalRecords').textContent = totalRecords;
+            document.getElementById('totalGenres').textContent = genres.length;
+            document.getElementById('totalStock').textContent = totalStock;
+        }
+
+        // Poblar filtro de géneros
+        function populateGenreFilter() {
+            const genres = [...new Set(allRecords.map(r => r.genero))].sort();
+            const genreFilter = document.getElementById('genreFilter');
+            
+            genres.forEach(genre => {
+                const option = document.createElement('option');
+                option.value = genre;
+                option.textContent = genre;
+                genreFilter.appendChild(option);
+            });
+        }
+
+        // Mostrar discos
+        function displayRecords() {
+            const container = document.getElementById('recordsContainer');
+            
+            if (filteredRecords.length === 0) {
+                container.innerHTML = `
+                    <div class="no-results">
+                        <h2>No se encontraron discos</h2>
+                        <p>Intenta ajustar los filtros de búsqueda</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'records-grid';
+
+            filteredRecords.forEach(record => {
+                const card = createRecordCard(record);
+                grid.appendChild(card);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(grid);
+        }
+
+        // Crear tarjeta de disco
+        function createRecordCard(record) {
+            const card = document.createElement('div');
+            card.className = 'record-card';
+
+            const stockClass = record.stock > 10 ? 'in-stock' : record.stock > 0 ? 'low-stock' : 'out-of-stock';
+            const stockText = record.stock > 0 ? `Stock: ${record.stock}` : 'Agotado';
+
+            card.innerHTML = `
+                <div class="record-image">
+                    ${record.imagen_url ? `<img src="${record.imagen_url}" alt="${record.nombre}" onerror="this.style.display='none'">` : '🎵'}
+                </div>
+                <div class="record-info">
+                    <div class="record-title">${record.nombre}</div>
+                    <div class="record-artist">${record.artista}</div>
+                    
+                    <div class="record-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Álbum:</span>
+                            <span>${record.album}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Año:</span>
+                            <span>${record.anio_lanzamiento}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Sello:</span>
+                            <span>${record.sello_discografico}</span>
+                        </div>
+                    </div>
+
+                    <span class="genre-tag">${record.genero}</span>
+
+                    <div class="record-footer">
+                        <span class="price">$${parseFloat(record.precio).toFixed(2)}</span>
+                        <span class="stock ${stockClass}">${stockText}</span>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        // Aplicar filtros
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const selectedGenre = document.getElementById('genreFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+
+            filteredRecords = allRecords.filter(record => {
+                const matchesSearch = 
+                    record.nombre.toLowerCase().includes(searchTerm) ||
+                    record.artista.toLowerCase().includes(searchTerm) ||
+                    record.album.toLowerCase().includes(searchTerm);
+                
+                const matchesGenre = !selectedGenre || record.genero === selectedGenre;
+
+                return matchesSearch && matchesGenre;
+            });
+
+            // Ordenar
+            filteredRecords.sort((a, b) => {
+                switch (sortBy) {
+                    case 'nombre':
+                        return a.nombre.localeCompare(b.nombre);
+                    case 'artista':
+                        return a.artista.localeCompare(b.artista);
+                    case 'precio_asc':
+                        return a.precio - b.precio;
+                    case 'precio_desc':
+                        return b.precio - a.precio;
+                    case 'anio_desc':
+                        return b.anio_lanzamiento - a.anio_lanzamiento;
+                    case 'anio_asc':
+                        return a.anio_lanzamiento - b.anio_lanzamiento;
+                    default:
+                        return 0;
+                }
+            });
+
+            displayRecords();
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', applyFilters);
+        document.getElementById('genreFilter').addEventListener('change', applyFilters);
+        document.getElementById('sortBy').addEventListener('change', applyFilters);
+
+        // Cargar datos al cargar la página
+        loadRecords();
+    </script>
+    <script src="/static/js/spotify_search.js"></script>
+</body>
+</html>
