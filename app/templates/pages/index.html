@@ -38,21 +38,56 @@
             </div>
         </div>
 
-        <div id="spotifyPanel" class="spotify-panel" style="display:none; margin:16px 40px 0 40px;">
-            <div class="spotify-search-row">
-                <input type="text" id="spotifySearchInput" placeholder="Buscar álbum en Spotify...">
-                <button id="spotifySearchBtn">Buscar</button>
+        <div id="spotifyPanel" class="spotify-panel" style="display:none;">
+            <div class="spotify-header">
+                <h3>Agregar Discos desde Spotify</h3>
+                <p>Busca álbumes en Spotify y agrégarlos a tu catálogo</p>
+            </div>
+            
+            <div class="spotify-search-section">
+                <div class="search-input-group">
+                    <input type="text" id="spotifySearchInput" placeholder="Buscar álbum en Spotify..." autocomplete="off">
+                    <button id="spotifySearchBtn" class="search-btn">
+                        Buscar
+                    </button>
+                </div>
             </div>
 
             <div id="spotifyResults" class="spotify-results"></div>
 
-            <div id="priceRow" style="display:none; margin-top:12px;">
-                <label for="selectedAlbumPrice">Precio del disco:</label>
-                <input type="number" id="selectedAlbumPrice" step="0.01" min="0" placeholder="0.00">
-                <button id="saveAlbumBtn">Guardar selección</button>
-                <button id="cancelAlbumBtn">Cancelar</button>
+            <div id="albumDetailsPanel" class="album-details-panel" style="display:none;">
+                <div class="details-header">
+                    <h4>Configurar Disco</h4>
+                    <div id="selectedAlbumInfo" class="selected-album-preview"></div>
+                </div>
+                
+                <div class="details-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="selectedAlbumPrice">Precio del disco ($)</label>
+                            <input type="number" id="selectedAlbumPrice" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="selectedAlbumStock">Cantidad en stock</label>
+                            <input type="number" id="selectedAlbumStock" min="1" value="1" placeholder="1">
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button id="saveAlbumBtn" class="save-btn">
+                            Agregar al Catálogo
+                        </button>
+                        <button id="cancelAlbumBtn" class="cancel-btn">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div id="spotifySelections" class="spotify-selections" style="margin-top:12px;"></div>
+            
+            <div id="spotifySelections" class="recently-added" style="margin-top:20px;">
+                <h4>Discos agregados recientemente:</h4>
+                <div class="selections-grid"></div>
+            </div>
         </div>
 
         <div class="stats">
@@ -75,11 +110,26 @@
         </div>
     </div>
 
+    <div id="deleteModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Confirmar eliminación</h3>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar este disco?</p>
+                <div id="deleteDiscInfo" class="delete-disc-info"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirmDeleteBtn" class="confirm-btn">Eliminar</button>
+                <button id="cancelDeleteBtn" class="cancel-btn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let allRecords = [];
         let filteredRecords = [];
 
-        // Cargar datos al iniciar
         async function loadRecords() {
             try {
                 const response = await fetch('/api/discos');
@@ -100,7 +150,6 @@
             }
         }
 
-        // Actualizar estadísticas
         function updateStats() {
             const totalRecords = allRecords.length;
             const genres = [...new Set(allRecords.map(r => r.genero))];
@@ -111,7 +160,6 @@
             document.getElementById('totalStock').textContent = totalStock;
         }
 
-        // Poblar filtro de géneros
         function populateGenreFilter() {
             const genres = [...new Set(allRecords.map(r => r.genero))].sort();
             const genreFilter = document.getElementById('genreFilter');
@@ -124,7 +172,6 @@
             });
         }
 
-        // Mostrar discos
         function displayRecords() {
             const container = document.getElementById('recordsContainer');
             
@@ -150,17 +197,18 @@
             container.appendChild(grid);
         }
 
-        // Crear tarjeta de disco
         function createRecordCard(record) {
             const card = document.createElement('div');
             card.className = 'record-card';
+            card.setAttribute('data-record-id', record.id);
 
             const stockClass = record.stock > 10 ? 'in-stock' : record.stock > 0 ? 'low-stock' : 'out-of-stock';
             const stockText = record.stock > 0 ? `Stock: ${record.stock}` : 'Agotado';
 
             card.innerHTML = `
+                <button class="delete-btn" onclick="showDeleteModal(${record.id}, '${record.nombre.replace(/'/g, "\\'")}')">×</button>
                 <div class="record-image">
-                    ${record.imagen_url ? `<img src="${record.imagen_url}" alt="${record.nombre}" onerror="this.style.display='none'">` : '🎵'}
+                    ${record.imagen_url ? `<img src="${record.imagen_url}" alt="${record.nombre}" onerror="this.style.display='none'">` : '[Imagen no disponible]'}
                 </div>
                 <div class="record-info">
                     <div class="record-title">${record.nombre}</div>
@@ -193,7 +241,6 @@
             return card;
         }
 
-        // Aplicar filtros
         function applyFilters() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const selectedGenre = document.getElementById('genreFilter').value;
@@ -210,7 +257,6 @@
                 return matchesSearch && matchesGenre;
             });
 
-            // Ordenar
             filteredRecords.sort((a, b) => {
                 switch (sortBy) {
                     case 'nombre':
@@ -233,12 +279,85 @@
             displayRecords();
         }
 
-        // Event listeners
         document.getElementById('searchInput').addEventListener('input', applyFilters);
         document.getElementById('genreFilter').addEventListener('change', applyFilters);
         document.getElementById('sortBy').addEventListener('change', applyFilters);
 
-        // Cargar datos al cargar la página
+        let recordToDelete = null;
+
+        function showDeleteModal(recordId, recordName) {
+            recordToDelete = recordId;
+            document.getElementById('deleteDiscInfo').innerHTML = `
+                <strong>"${recordName}"</strong>
+            `;
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+            recordToDelete = null;
+        }
+
+        async function deleteRecord() {
+            if (!recordToDelete) return;
+
+            try {
+                const response = await fetch(`/api/discos/${recordToDelete}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Error al eliminar el disco');
+                }
+
+                const cardElement = document.querySelector(`[data-record-id="${recordToDelete}"]`);
+                if (cardElement) {
+                    cardElement.remove();
+                }
+
+                allRecords = allRecords.filter(record => record.id !== recordToDelete);
+                filteredRecords = filteredRecords.filter(record => record.id !== recordToDelete);
+                
+                updateStats();
+                
+                if (allRecords.length === 0) {
+                    displayRecords();
+                }
+
+                closeDeleteModal();
+                
+                const container = document.getElementById('recordsContainer');
+                const successMsg = document.createElement('div');
+                successMsg.className = 'success-message';
+                successMsg.textContent = 'Disco eliminado correctamente';
+                successMsg.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #4CAF50;
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 4px;
+                    z-index: 1000;
+                `;
+                document.body.appendChild(successMsg);
+                setTimeout(() => successMsg.remove(), 3000);
+                
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        document.getElementById('confirmDeleteBtn').addEventListener('click', deleteRecord);
+        document.getElementById('cancelDeleteBtn').addEventListener('click', closeDeleteModal);
+        
+        document.getElementById('deleteModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDeleteModal();
+            }
+        });
+
         loadRecords();
     </script>
     <script src="/static/js/spotify_search.js"></script>

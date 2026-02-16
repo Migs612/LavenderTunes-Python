@@ -1,31 +1,12 @@
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Servidor: 127.0.0.1
--- Tiempo de generación: 27-01-2026 a las 12:52:59
--- Versión del servidor: 10.4.32-MariaDB
--- Versión de PHP: 8.0.30
-
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
 
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
+CREATE USER IF NOT EXISTS 'ManuelPython'@'%' IDENTIFIED BY 'LavenderTunes';
+GRANT ALL PRIVILEGES ON lavendertunes.* TO 'ManuelPython'@'%';
+FLUSH PRIVILEGES;
 
---
--- Base de datos: `lavendertunes`
---
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `discos`
---
 
 CREATE TABLE `discos` (
   `id` int(11) NOT NULL,
@@ -41,10 +22,6 @@ CREATE TABLE `discos` (
   `imagen_url` varchar(500) DEFAULT NULL,
   `fecha_agregado` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Volcado de datos para la tabla `discos`
---
 
 INSERT INTO `discos` (`id`, `nombre`, `artista`, `album`, `genero`, `anio_lanzamiento`, `sello_discografico`, `codigo_barras`, `precio`, `stock`, `imagen_url`, `fecha_agregado`) VALUES
 (23, 'The Fate of Ophelia (Remix)', 'Taylor Swift', 'The Fate of Ophelia', 'Pop', 2024, 'Republic Records', 'TS-264E9', 12.99, 45, 'https://i.scdn.co/image/ab67616d0000b2735a9197396cb52631e73364b9', '2026-01-20 11:16:37'),
@@ -97,13 +74,6 @@ INSERT INTO `discos` (`id`, `nombre`, `artista`, `album`, `genero`, `anio_lanzam
 (85, 'Christmas Album', 'The Jackson 5', 'Christmas Album', 'Soul/Motown', 1970, 'Motown Records', 'J5-5M8U1', 17.96, 75, 'https://i.scdn.co/image/ab67616d0000b27308a0fe33e91b991d2c9c9cde', '2026-01-20 11:16:37'),
 (86, 'AM', 'Arctic Monkeys', 'AM', 'Desconocido', 2013, NULL, '78bpIziExqiI9qztvNFlQu', 20.50, 1, 'https://i.scdn.co/image/ab67616d0000b2734ae1c4c5c45aabe565499163', '2026-01-27 11:50:32');
 
---
--- Índices para tablas volcadas
---
-
---
--- Indices de la tabla `discos`
---
 ALTER TABLE `discos`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `codigo_barras` (`codigo_barras`),
@@ -111,17 +81,6 @@ ALTER TABLE `discos`
   ADD KEY `idx_genero` (`genero`),
   ADD KEY `idx_nombre` (`nombre`);
 
---
--- AUTO_INCREMENT de las tablas volcadas
---
-
---
--- AUTO_INCREMENT de la tabla `discos`
---
 ALTER TABLE `discos`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=87;
 COMMIT;
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

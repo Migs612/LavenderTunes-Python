@@ -4,140 +4,253 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('spotifySearchInput');
     const searchBtn = document.getElementById('spotifySearchBtn');
     const resultsDiv = document.getElementById('spotifyResults');
-    const priceRow = document.getElementById('priceRow');
+    const albumDetailsPanel = document.getElementById('albumDetailsPanel');
     const priceInput = document.getElementById('selectedAlbumPrice');
+    const stockInput = document.getElementById('selectedAlbumStock');
     const saveBtn = document.getElementById('saveAlbumBtn');
     const cancelBtn = document.getElementById('cancelAlbumBtn');
+    const albumInfoDiv = document.getElementById('selectedAlbumInfo');
+
+    if (!openBtn || !panel) {
+        return;
+    }
 
     let selectedAlbum = null;
 
     openBtn.addEventListener('click', () => {
         if (panel.style.display === 'none' || !panel.style.display) {
             panel.style.display = 'block';
-            openBtn.textContent = 'Cerrar';
+            openBtn.textContent = 'Cerrar Spotify';
+            if (searchInput) searchInput.focus();
         } else {
             panel.style.display = 'none';
             openBtn.textContent = 'Agregar desde Spotify';
-            resultsDiv.innerHTML = '';
-            priceRow.style.display = 'none';
+            resetPanel();
         }
     });
 
-    searchBtn.addEventListener('click', async () => {
-        const q = searchInput.value.trim();
-        if (!q) return;
-        resultsDiv.innerHTML = '<div class="loading">Buscando...</div>';
+    if (searchBtn) {
+        searchBtn.addEventListener('click', searchAlbums);
+    }
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchAlbums();
+            }
+        });
+    }
+
+    async function searchAlbums() {
+        const query = searchInput?.value?.trim();
+        if (!query || !resultsDiv) return;
+
+        resultsDiv.innerHTML = '<div class="loading">Buscando en Spotify...</div>';
+        
         try {
-            const resp = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
-            if (!resp.ok) throw new Error('Error en búsqueda');
-            const albums = await resp.json();
+            const response = await fetch(`/api/spotify/search?q=${encodeURIComponent(query)}`);
+            if (!response.ok) throw new Error('Error en la búsqueda');
+            
+            const albums = await response.json();
 
             if (!albums.length) {
                 resultsDiv.innerHTML = '<div class="no-results">No se encontraron álbumes</div>';
                 return;
             }
 
-            resultsDiv.innerHTML = '';
-            albums.forEach(a => {
-                const card = document.createElement('div');
-                card.className = 'spotify-album-card';
-                card.innerHTML = `
-                    <div class="album-image">${a.image_url ? `<img src="${a.image_url}" alt="${a.name}" onerror="this.style.display='none'">` : '🎵'}</div>
-                    <div class="album-info">
-                        <div class="album-name">${a.name}</div>
-                        <div class="album-artists">${a.artists}</div>
-                        <div class="album-meta">${a.release_date} · ${a.total_tracks} tracks</div>
-                        <button class="selectAlbumBtn">Seleccionar</button>
-                    </div>
-                `;
+            displayAlbums(albums);
 
-                const selectBtn = card.querySelector('.selectAlbumBtn');
-                selectBtn.addEventListener('click', () => {
-                    selectedAlbum = a;
-                    priceRow.style.display = 'flex';
-                    priceInput.value = '';
-                    // Scroll into view
-                    priceRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (error) {
+            resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+        }
+    }
+
+    function displayAlbums(albums) {
+        if (!resultsDiv) return;
+        
+        resultsDiv.innerHTML = '';
+        
+        albums.forEach(album => {
+            const card = document.createElement('div');
+            card.className = 'spotify-album-card';
+            card.innerHTML = `
+                <div class="album-image">
+                    ${album.image_url ? `<img src="${album.image_url}" alt="${album.name}" onerror="this.style.display='none'">` : '[Imagen]'}
+                </div>
+                <div class="album-info">
+                    <div class="album-name">${album.name}</div>
+                    <div class="album-artists">${album.artists}</div>
+                    <div class="album-meta">${album.release_date} · ${album.total_tracks} tracks</div>
+                    <button class="selectAlbumBtn">Seleccionar</button>
+                </div>
+            `;
+
+            const selectBtn = card.querySelector('.selectAlbumBtn');
+            if (selectBtn) {
+                selectBtn.addEventListener('click', () => selectAlbum(album));
+            }
+
+            resultsDiv.appendChild(card);
+        });
+    }
+
+    function selectAlbum(album) {
+        selectedAlbum = album;
+        
+        if (albumInfoDiv) {
+            albumInfoDiv.innerHTML = `
+                <div class="preview-image">
+                    ${album.image_url ? `<img src="${album.image_url}" alt="${album.name}">` : '[Imagen]'}
+                </div>
+                <div class="preview-info">
+                    <h5>${album.name}</h5>
+                    <p>${album.artists} · ${album.release_date}</p>
+                </div>
+            `;
+        }
+        
+        if (priceInput) priceInput.value = '';
+        if (stockInput) stockInput.value = '1';
+        if (albumDetailsPanel) albumDetailsPanel.style.display = 'block';
+        
+        if (albumDetailsPanel) {
+            albumDetailsPanel.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center' 
+            });
+        }
+        
+
+        setTimeout(() => {
+            if (priceInput) priceInput.focus();
+        }, 300);
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const price = priceInput ? parseFloat(priceInput.value) : NaN;
+            const stock = stockInput ? parseInt(stockInput.value) || 1 : 1;
+            
+            if (isNaN(price) || price < 0) {
+                alert('Por favor introduce un precio válido');
+                if (priceInput) priceInput.focus();
+                return;
+            }
+
+            if (stock < 1) {
+                alert('La cantidad debe ser al menos 1');
+                if (stockInput) stockInput.focus();
+                return;
+            }
+
+            if (!selectedAlbum) {
+                alert('No hay álbum seleccionado');
+                return;
+            }
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="btn-icon">Loading</span>Guardando...';
+
+            try {
+                const payload = {
+                    spotify_id: selectedAlbum.id,
+                    name: selectedAlbum.name,
+                    artists: selectedAlbum.artists,
+                    release_date: selectedAlbum.release_date,
+                    image_url: selectedAlbum.image_url,
+                    price: price,
+                    stock: stock
+                };
+
+                const response = await fetch('/api/discos/from_spotify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
 
-                resultsDiv.appendChild(card);
-            });
-
-        } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">${err.message}</div>`;
-        }
-    });
-
-    saveBtn.addEventListener('click', async () => {
-        const price = parseFloat(priceInput.value);
-        if (isNaN(price) || price < 0) {
-            alert('Introduce un precio válido');
-            return;
-        }
-
-        if (!selectedAlbum) {
-            alert('No hay álbum seleccionado');
-            return;
-        }
-
-        const albumData = selectedAlbum; // capture
-
-        // Immediately POST to backend to persist
-        try {
-            const body = {
-                spotify_id: albumData.id,
-                name: albumData.name,
-                artists: albumData.artists,
-                release_date: albumData.release_date,
-                image_url: albumData.image_url,
-                price: price
-            };
-
-            const resp = await fetch('/api/discos/from_spotify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-
-            if (resp.status === 409) {
-                alert('Este disco ya existe en el catálogo.');
-            } else if (!resp.ok) {
-                const text = await resp.text();
-                throw new Error(text || 'Error al guardar');
-            } else {
-                // Success
-                const data = await resp.json();
-                alert('Disco agregado al catálogo.');
-                if (window.loadRecords) window.loadRecords();
+                if (response.status === 409) {
+                    alert('Este disco ya existe en el catálogo');
+                } else if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Error al guardar');
+                } else {
+                    const data = await response.json();
+                    showSuccessMessage();
+                    addToRecentlyAdded(selectedAlbum, price, stock);
+                    
+                    if (window.loadRecords) window.loadRecords();
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<span class="btn-icon">Save</span>Agregar al Catálogo';
             }
-        } catch (err) {
-            alert('Error guardando en el servidor: ' + (err.message || err));
-        }
 
-        // Show confirmation in selections panel (non-interactive)
-        const selectionsContainer = document.getElementById('spotifySelections');
-        const infoCard = document.createElement('div');
-        infoCard.className = 'selected-album-card';
-        infoCard.innerHTML = `
-            <div class="selected-album-image">${albumData.image_url ? `<img src="${albumData.image_url}" alt="${albumData.name}" onerror="this.style.display='none'">` : '🎵'}</div>
-            <div class="selected-album-info">
-                <div class="selected-album-name">${albumData.name}</div>
-                <div class="selected-album-artists">${albumData.artists}</div>
-                <div class="selected-album-meta">${albumData.release_date}</div>
-                <div class="selected-album-price">Precio: $${price.toFixed(2)}</div>
+            if (albumDetailsPanel) albumDetailsPanel.style.display = 'none';
+            selectedAlbum = null;
+        });
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            if (albumDetailsPanel) albumDetailsPanel.style.display = 'none';
+            selectedAlbum = null;
+        });
+    }
+
+    function showSuccessMessage() {
+        const message = document.createElement('div');
+        message.className = 'success-message';
+        message.innerHTML = 'Disco agregado exitosamente al catálogo';
+        message.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        `;
+        
+        document.body.appendChild(message);
+        
+        setTimeout(() => {
+            message.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => message.remove(), 300);
+        }, 3000);
+    }
+
+    function addToRecentlyAdded(album, price, stock) {
+        const selectionsContainer = document.querySelector('.selections-grid');
+        if (!selectionsContainer) return;
+        
+        const item = document.createElement('div');
+        item.className = 'recently-added-item';
+        item.innerHTML = `
+            <div class="recently-added-image">
+                ${album.image_url ? `<img src="${album.image_url}" alt="${album.name}">` : '[Imagen]'}
+            </div>
+            <div class="recently-added-info">
+                <h6>${album.name}</h6>
+                <p>${album.artists}</p>
+                <div class="price-stock">$${price.toFixed(2)} · ${stock} unidades</div>
             </div>
         `;
 
-        selectionsContainer.insertBefore(infoCard, selectionsContainer.firstChild);
+        selectionsContainer.insertBefore(item, selectionsContainer.firstChild);
+        
+        while (selectionsContainer.children.length > 5) {
+            selectionsContainer.removeChild(selectionsContainer.lastChild);
+        }
+    }
 
-        // Cleanup UI
-        priceRow.style.display = 'none';
-        priceInput.value = '';
+    function resetPanel() {
+        if (resultsDiv) resultsDiv.innerHTML = '';
+        if (albumDetailsPanel) albumDetailsPanel.style.display = 'none';
         selectedAlbum = null;
-    });
-
-    cancelBtn.addEventListener('click', () => {
-        priceRow.style.display = 'none';
-        selectedAlbum = null;
-    });
+        if (searchInput) searchInput.value = '';
+    }
 });

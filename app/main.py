@@ -17,10 +17,8 @@ load_dotenv()
 
 app = FastAPI(title="LavenderTunes API")
 
-# Montar carpeta static
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Configuración de base de datos
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "user": os.getenv("DB_USER", "ManuelPython"),
@@ -30,7 +28,6 @@ DB_CONFIG = {
 
 
 def get_db_connection():
-    """Crear conexión a la base de datos"""
     try:
         connection = mysql.connector.connect(**DB_CONFIG)
         return connection
@@ -39,23 +36,19 @@ def get_db_connection():
         raise HTTPException(status_code=500, detail=f"Error de conexión a base de datos: {str(e)}")
 
 
-# Spotify token caching
 SPOTIFY_TOKEN: str | None = None
 SPOTIFY_TOKEN_EXPIRES_AT: float = 0
 
 
 def get_spotify_token() -> str:
-    """Obtener token de acceso de Spotify (Client Credentials), con caching en memoria."""
     global SPOTIFY_TOKEN, SPOTIFY_TOKEN_EXPIRES_AT
 
     if SPOTIFY_TOKEN and time.time() < SPOTIFY_TOKEN_EXPIRES_AT:
         return SPOTIFY_TOKEN
 
-    # Allow both SPOTIFY_* and SPOTIPY_* names (some projects/use .env use SPOTIPY_*).
     client_id = os.getenv("SPOTIFY_CLIENT_ID") or os.getenv("SPOTIPY_CLIENT_ID")
     client_secret = os.getenv("SPOTIFY_CLIENT_SECRET") or os.getenv("SPOTIPY_CLIENT_SECRET")
 
-    # Strip quotes if present in .env values
     def _clean(v: str | None) -> str | None:
         if not v:
             return None
@@ -93,7 +86,6 @@ def get_spotify_token() -> str:
 
 @app.get("/api/spotify/search")
 async def spotify_search(q: str):
-    """Buscar álbumes en Spotify por texto (usa client credentials)."""
     token = get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     params = {"q": q, "type": "album", "limit": 12}
@@ -129,28 +121,20 @@ async def spotify_search(q: str):
 
 @app.post("/api/discos/from_spotify")
 async def create_disco_from_spotify(payload: dict):
-    """Insertar un disco obtenido de Spotify en la tabla `discos`.
-
-    Payload esperado: {
-        "spotify_id": str,
-        "name": str,
-        "artists": str,
-        "release_date": str, (YYYY-MM-DD or YYYY)
-        "image_url": str,
-        "price": number
-    }
-    """
     spotify_id = payload.get("spotify_id")
     name = payload.get("name")
     artists = payload.get("artists")
     release_date = payload.get("release_date")
     image_url = payload.get("image_url")
     price = payload.get("price")
+    stock = payload.get("stock", 1)
 
     if not spotify_id or not name or price is None:
         raise HTTPException(status_code=400, detail="spotify_id, name and price are required")
 
-    # Try to parse year
+    if not isinstance(stock, int) or stock < 1:
+        raise HTTPException(status_code=400, detail="stock must be a positive integer")
+
     year = None
     try:
         if release_date:
@@ -172,7 +156,6 @@ async def create_disco_from_spotify(payload: dict):
         genero = "Desconocido"
         sello = None
         codigo_barras = spotify_id
-        stock = 1
 
         cursor.execute(insert_query, (
             name, artists, name, genero, year, sello, codigo_barras, price, stock, image_url
@@ -181,13 +164,9 @@ async def create_disco_from_spotify(payload: dict):
         new_id = cursor.lastrowid
         cursor.close()
 
-        return {"success": True, "id": new_id}
+        return {"success": True, "id": new_id, "stock": stock}
 
     except mysql.connector.IntegrityError as e:
-        # Duplicate codigo_barras
-        if connection:
-            if connection.is_connected():
-                connection.close()
         raise HTTPException(status_code=409, detail="El disco ya existe en el catálogo")
 
     except Error as e:
@@ -200,7 +179,6 @@ async def create_disco_from_spotify(payload: dict):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    """Servir la página principal"""
     html_path = Path("app/templates/pages/index.html")
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
@@ -209,7 +187,6 @@ async def read_root():
 
 @app.get("/api/discos", response_model=List[Dict[str, Any]])
 async def get_discos():
-    """Obtener todos los discos de la base de datos"""
     connection = None
     try:
         connection = get_db_connection()
@@ -226,7 +203,6 @@ async def get_discos():
         cursor.execute(query)
         discos = cursor.fetchall()
         
-        # Convertir Decimal a float para JSON
         for disco in discos:
             if isinstance(disco.get('precio'), Decimal):
                 disco['precio'] = float(disco['precio'])
@@ -244,7 +220,6 @@ async def get_discos():
 
 @app.get("/api/discos/{disco_id}", response_model=Dict[str, Any])
 async def get_disco(disco_id: int):
-    """Obtener un disco específico por ID"""
     connection = None
     try:
         connection = get_db_connection()
@@ -261,7 +236,6 @@ async def get_disco(disco_id: int):
         cursor.execute(query, (disco_id,))
         disco = cursor.fetchone()
         
-        # Convertir Decimal a float para JSON
         if isinstance(disco.get('precio'), Decimal):
             disco['precio'] = float(disco['precio'])
         
@@ -282,7 +256,6 @@ async def get_disco(disco_id: int):
 
 @app.get("/api/generos", response_model=List[str])
 async def get_generos():
-    """Obtener lista única de géneros"""
     connection = None
     try:
         connection = get_db_connection()
@@ -298,6 +271,86 @@ async def get_generos():
         
     except Error as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener géneros: {str(e)}")
+    
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
+@app.put("/api/discos/{disco_id}")
+async def update_disco(disco_id: int, payload: dict):
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        check_query = "SELECT * FROM discos WHERE id = %s"
+        cursor.execute(check_query, (disco_id,))
+        existing = cursor.fetchone()
+
+        if not existing:
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Disco no encontrado")
+
+        nombre = payload.get("nombre", existing["nombre"])
+        artista = payload.get("artista", existing["artista"])
+        album = payload.get("album", existing["album"])
+        genero = payload.get("genero", existing["genero"])
+        anio_lanzamiento = payload.get("anio_lanzamiento", existing["anio_lanzamiento"])
+        sello_discografico = payload.get("sello_discografico", existing["sello_discografico"])
+        precio = payload.get("precio", existing["precio"])
+        stock = payload.get("stock", existing["stock"])
+        imagen_url = payload.get("imagen_url", existing["imagen_url"])
+
+        update_query = """
+            UPDATE discos 
+            SET nombre = %s, artista = %s, album = %s, genero = %s,
+                anio_lanzamiento = %s, sello_discografico = %s,
+                precio = %s, stock = %s, imagen_url = %s
+            WHERE id = %s
+        """
+
+        cursor.execute(update_query, (
+            nombre, artista, album, genero, anio_lanzamiento,
+            sello_discografico, precio, stock, imagen_url, disco_id
+        ))
+        connection.commit()
+        cursor.close()
+
+        return {"message": "Disco actualizado correctamente", "id": disco_id}
+
+    except Error as e:
+        raise HTTPException(status_code=500, detail=f"Error al actualizar disco: {str(e)}")
+
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
+@app.delete("/api/discos/{disco_id}")
+async def delete_disco(disco_id: int):
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        check_query = "SELECT id FROM discos WHERE id = %s"
+        cursor.execute(check_query, (disco_id,))
+        
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Disco no encontrado")
+        
+        delete_query = "DELETE FROM discos WHERE id = %s"
+        cursor.execute(delete_query, (disco_id,))
+        connection.commit()
+        
+        cursor.close()
+        
+        return {"message": "Disco eliminado correctamente"}
+        
+    except Error as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar disco: {str(e)}")
     
     finally:
         if connection and connection.is_connected():
