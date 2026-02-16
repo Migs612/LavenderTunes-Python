@@ -26,13 +26,13 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest httpx
 
       # Paso D: Ejecución de Tests
       - name: Correr Tests con Pytest
         run: |
-          pytest tests/
+          pytest
 
   # 3. TRABAJO DE DESPLIEGUE (CD)
   deploy-production:
@@ -43,3 +43,7 @@ jobs:
       - name: Despliegue a Producción (Simulado)
         env:
           DEPLOY_TOKEN: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          echo "Iniciando despliegue seguro..."
+          # Aquí iría el comando real de despliegue
+          echo "Despliegue de LavenderTunes completado exitosamente."
